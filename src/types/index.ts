@@ -18,28 +18,42 @@ export enum WidgetType {
   backgroundWidget = 'backgroundWidget',
 }
 
+export interface Container {
+  id: string;
+  el: HTMLElement;
+}
+
+export interface Pointer {
+  pointerX: number;
+  pointerY: number;
+}
+
 export interface MetaData {
   code: string,
   name: string,
   width: number,
   height: number,
+  pageX?: number,
+  pageY?: number,
+  left?: number,
+  top?: number,
   widgetType: WidgetType,
+  widgetList: MetaData[];
 }
 
 export interface State {
-  type: DragType | null,
-  pointerX: number | null,
-  pointerY: number | null,
-  target: HTMLElement | null,
-  metaData: MetaData | null,
+  target: HTMLElement,
+  shadowNode: HTMLElement | null,
+  metaData: MetaData,
+  container: Container | null,
   dimensionsBeforeMove: {
-    pointerX: number | null,
-    pointerY: number | null,
-    pageX: number | null,
-    pageY: number | null,
-    width: number | null,
-    height: number | null,
-    left: number | null,
-    top: number | null,
+    pointerX: number,
+    pointerY: number,
+    pageX: number,
+    pageY: number,
+    width: number,
+    height: number,
+    left: number,
+    top: number,
   },
 }

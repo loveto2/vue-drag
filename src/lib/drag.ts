@@ -1,78 +1,88 @@
-import { MetaData, DragEventType, State, DragType } from './../types/index';
-import mitt, { Handler } from 'mitt'
+import mitt, { Handler } from "mitt";
 
-const emitter = mitt()
+const emitter = mitt();
 
 export const on = (type: string, handler: Handler<unknown>) => {
-  emitter.on(type, handler)
-}
+  emitter.on(type, handler);
+};
 
 export const off = (type: string, handler?: Handler<unknown>) => {
-  emitter.off(type, handler)
+  emitter.off(type, handler);
+};
+
+export const emit = (type: string, data: unknown) => {
+  emitter.emit(type, data);
+};
+
+const handlers = {
+  dragmove: new Set<Function>(),
+  dragend: new Set<Function>(),
+};
+
+export interface EventHandler {
+  dragmove: Function;
+  dragend: Function;
 }
 
-export const emit = (type: string) => {
-  emitter.emit(type)
-}
+export const register = (handler: EventHandler) => {
+  const { dragmove, dragend } = handlers;
+  dragmove.add(handler.dragmove);
+  dragend.add(handler.dragend);
+};
 
-let installed = false
-let pending = false
+export const unregister = (handler: EventHandler) => {
+  const { dragmove, dragend } = handlers;
+  dragmove.delete(handler.dragmove);
+  dragend.delete(handler.dragend);
+};
 
-const state: State = {
-  type: null,
-  pointerX: null,
-  pointerY: null,
-  target: null,
-  metaData: null,
-  dimensionsBeforeMove: {
-    pointerX: null,
-    pointerY: null,
-    pageX: null,
-    pageY: null,
-    width: null,
-    height: null,
-    left: null,
-    top: null,
-  },
-}
-
-const mousedown = (e: MouseEvent, metaData: MetaData) => {
-  console.log('mousedown', e, metaData)
-  pending = true
-  const { type } = state
-  emitter.emit(`${DragEventType.dragstart}-${type}`, state)
-}
+// const mousedown = (e: MouseEvent, metaData: MetaData) => {
+//   console.log('mousedown', e, metaData)
+//   pending = true
+//   const { type } = state
+//   emitter.emit(`${DragEventType.dragstart}-${type}`, state)
+// }
 const mousemove = (e: MouseEvent) => {
-  if (pending) {
-    console.log('mousemove', e)
-    const { type } = state
-    emitter.emit(`${DragEventType.dragmove}-${type}`, state)
+  const { pageX: pointerX, pageY: pointerY } = e;
+  const { dragmove } = handlers;
+  for (const handler of dragmove) {
+    try {
+      handler({
+        pointerX,
+        pointerY,
+      });
+    } catch (error) {
+      console.error(error);
+    }
   }
-}
+};
 const mouseup = (e: MouseEvent) => {
-  if (pending) {
-    console.log('mouseup', e)
-    const { type } = state
-    emitter.emit(`${DragEventType.dragend}-${type}`, state)
-    pending = false
+  const { pageX: pointerX, pageY: pointerY } = e;
+  const { dragend } = handlers;
+  for (const handler of dragend) {
+    try {
+      handler({
+        pointerX,
+        pointerY,
+      });
+    } catch (error) {
+      console.error(error);
+    }
   }
-}
+};
 
 const init = () => {
-  document.addEventListener('mousemove', mousemove)
-  document.addEventListener('mouseup', mouseup)
-}
+  document.addEventListener("mousemove", mousemove);
+  document.addEventListener("mouseup", mouseup);
+};
 
-export const useDrag = (type: DragType) => {
-  state.type = type
-  return { mousedown }
-}
+let installed = false;
 
 export default {
   install() {
     if (!installed) {
-      init()
-      installed = true
+      init();
+      installed = true;
     }
-  }
-}
+  },
+};

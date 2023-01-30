@@ -1,23 +1,21 @@
 <template>
   <div class="widget-list">
-    <div
-      class="widget"
-      v-for="widget of widgetList"
-      :key="widget.code"
-      @mousedown="mousedown($event, widget)"
-    >
+    <div class="widget" v-for="widget of widgetList" :key="widget.code" @mousedown="mousedown($event, widget)">
       {{ widget.name }}
     </div>
   </div>
 </template>
 
 <script lang="ts" setup>
-import { useDrag } from '../lib/drag'
-import { DragType, MetaData, State, WidgetType } from '../types';
-
-const { mousedown } = useDrag(DragType.dragdrop)
-
-const dragType = ref(DragType)
+import { emit, register, unregister } from "@/lib/drag";
+import {
+  Container,
+  MetaData,
+  Pointer,
+  State,
+  WidgetType,
+} from "@/types";
+import { map } from "./store";
 
 const widgetList = ref<MetaData[]>([
   {
@@ -26,6 +24,7 @@ const widgetList = ref<MetaData[]>([
     width: 500,
     height: 300,
     widgetType: WidgetType.container,
+    widgetList: [],
   },
   {
     code: "tabs",
@@ -33,6 +32,7 @@ const widgetList = ref<MetaData[]>([
     width: 300,
     height: 180,
     widgetType: WidgetType.subContainer,
+    widgetList: [],
   },
   {
     code: "button",
@@ -40,6 +40,7 @@ const widgetList = ref<MetaData[]>([
     width: 150,
     height: 80,
     widgetType: WidgetType.widget,
+    widgetList: [],
   },
   {
     code: "icon",
@@ -47,6 +48,7 @@ const widgetList = ref<MetaData[]>([
     width: 80,
     height: 80,
     widgetType: WidgetType.widget,
+    widgetList: [],
   },
   {
     code: "text",
@@ -54,6 +56,7 @@ const widgetList = ref<MetaData[]>([
     width: 300,
     height: 100,
     widgetType: WidgetType.widget,
+    widgetList: [],
   },
 ]);
 
@@ -68,36 +71,36 @@ const isInRect = (pageX: number, pageY: number, el: HTMLElement) => {
 };
 
 const getContainer = (pointerX: number, pointerY: number) => {
-  // const subContainerList = map.get(WIDGET_TYPE.SUB_CONTAINER) || [];
-  // const containerList = map.get(WIDGET_TYPE.CONTSINER) || [];
-  // const canvasList = map.get(WIDGET_TYPE.CANVAS) || [];
+  const subContainerMap = map.get(WidgetType.subContainer) || new Map<string, Container>();
+  const containerMap = map.get(WidgetType.container) || new Map<string, Container>();
+  const canvasMap = map.get(WidgetType.canvas) || new Map<string, Container>();
 
-  let parentContainer = null;
-  // for (const subContainer of subContainerList) {
-  //   const inRect = isInRect(pointerX, pointerY, subContainer.el);
-  //   if (inRect) {
-  //     parentContainer = subContainer;
-  //     break;
-  //   }
-  // }
-  // if (!parentContainer) {
-  //   for (const container of containerList) {
-  //     const inRect = isInRect(pointerX, pointerY, container.el);
-  //     if (inRect) {
-  //       parentContainer = container;
-  //       break;
-  //     }
-  //   }
-  // }
-  // if (!parentContainer) {
-  //   for (const canvas of canvasList) {
-  //     const inRect = isInRect(pointerX, pointerY, canvas.el);
-  //     if (inRect) {
-  //       parentContainer = canvas;
-  //       break;
-  //     }
-  //   }
-  // }
+  let parentContainer: null | Container = null;
+  for (const subContainer of subContainerMap.values()) {
+    const inRect = isInRect(pointerX, pointerY, subContainer.el);
+    if (inRect) {
+      parentContainer = subContainer;
+      break;
+    }
+  }
+  if (!parentContainer) {
+    for (const container of containerMap.values()) {
+      const inRect = isInRect(pointerX, pointerY, container.el);
+      if (inRect) {
+        parentContainer = container;
+        break;
+      }
+    }
+  }
+  if (!parentContainer) {
+    for (const canvas of canvasMap.values()) {
+      const inRect = isInRect(pointerX, pointerY, canvas.el);
+      if (inRect) {
+        parentContainer = canvas;
+        break;
+      }
+    }
+  }
   return parentContainer;
 };
 
@@ -122,7 +125,26 @@ const dragstart = (state: State) => {
   document.body.style.cursor = "grabbing";
 };
 
-const dragmove = (data: unknown) => {
+const state = ref<null | State>(null);
+
+const dragmove = (pointer: Pointer) => {
+  if (state.value) {
+    const { pointerX, pointerY } = pointer;
+    const { shadowNode, dimensionsBeforeMove } = state.value;
+    const deltaX = pointerX - dimensionsBeforeMove.pointerX;
+    const deltaY = pointerY - dimensionsBeforeMove.pointerY;
+    if (shadowNode) {
+      shadowNode.style.left = dimensionsBeforeMove.left + deltaX + "px";
+      shadowNode.style.top = dimensionsBeforeMove.top + deltaY + "px";
+    }
+
+    const container = getContainer(pointerX, pointerY);
+    if (container) {
+      state.value.container = container;
+    } else {
+      state.value.container = null;
+    }
+  }
   // console.log("dragmove", data);
   // const {
   //   state: {
@@ -144,7 +166,42 @@ const dragmove = (data: unknown) => {
   // }
 };
 
-const dragend = (data: unknown) => {
+const normalizeMetaData = (metaData: MetaData) => {
+  const { width, height, widgetType } = metaData;
+  metaData.widgetType = widgetType || WidgetType.widget
+  metaData.width = width || 10
+  metaData.height = height || 10
+  metaData.widgetList = []
+}
+
+const dragend = (pointer: Pointer) => {
+  if (state.value) {
+    const { pointerX, pointerY } = pointer;
+    const { target, shadowNode, container, metaData } = state.value;
+    normalizeMetaData(metaData);
+    target.style.transition = "opacity .3s";
+    target.style.opacity = '1';
+    if (shadowNode) {
+      shadowNode.style.transition = "opacity .3s";
+      shadowNode.style.opacity = '0';
+      shadowNode.addEventListener("transitionend", () => {
+        document.body.removeChild(shadowNode);
+      });
+    }
+    console.log(container, map)
+    if (container) {
+      emit(`drop-${container.id}`, {
+        pointerX,
+        pointerY,
+        metaData,
+      });
+    }
+
+    target.style.cursor = "";
+    document.body.style.cursor = "";
+
+    state.value = null;
+  }
   // console.log("dragend", data);
   // const {
   //   state: { target, shadowNode, container, metaData, pointerX, pointerY },
@@ -169,13 +226,56 @@ const dragend = (data: unknown) => {
   // document.body.style.cursor = "";
 };
 
+const events = {
+  dragmove,
+  dragend,
+};
+
+const mousedown = (e: MouseEvent, metaData: MetaData) => {
+  const { pageX: pointerX, pageY: pointerY, target } = e;
+  const targetElement = target as HTMLElement;
+  const { width, height, x, y } = targetElement.getBoundingClientRect();
+  const shadowNode = targetElement.cloneNode(true) as HTMLElement;
+
+  targetElement.style.opacity = "0";
+  shadowNode.style.width = width + "px";
+  shadowNode.style.height = height + "px";
+  shadowNode.style.left = x + "px";
+  shadowNode.style.top = y + "px";
+  shadowNode.style.background = "pink";
+  shadowNode.style.position = "absolute";
+  document.body.appendChild(shadowNode);
+
+  targetElement.style.cursor = "grabbing";
+  document.body.style.cursor = "grabbing";
+
+  state.value = {
+    target: targetElement,
+    shadowNode,
+    metaData,
+    container: null,
+    dimensionsBeforeMove: {
+      pointerX,
+      pointerY,
+      pageX: x,
+      pageY: y,
+      width,
+      height,
+      left: x,
+      top: y,
+    },
+  };
+};
+
 onMounted(() => {
+  register(events);
   // emitter.on(`dragstart-${DRAG_TYPE.DRAG}-`, dragstart);
   // emitter.on(`dragmove-${DRAG_TYPE.DRAG}-`, dragmove);
   // emitter.on(`dragend-${DRAG_TYPE.DRAG}-`, dragend);
 });
 
 onUnmounted(() => {
+  unregister(events);
   // emitter.off(`dragstart-${DRAG_TYPE.DRAG}-`, dragstart);
   // emitter.off(`dragmove-${DRAG_TYPE.DRAG}-`, dragmove);
   // emitter.off(`dragend-${DRAG_TYPE.DRAG}-`, dragend);

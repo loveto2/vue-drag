@@ -14,7 +14,11 @@
     "noEmit": true,
     "types": [
       "unplugin-vue2-script-setup/types"
-    ]
+    ],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    }
   },
   "vueCompilerOptions": {
     "target": 2,

@@ -1,7 +1,7 @@
 <template>
   <div class="app">
     <widget-list />
-    <!-- <drag-panel /> -->
+    <drag-panel />
     <!-- <configuration /> -->
   </div>
 </template>
