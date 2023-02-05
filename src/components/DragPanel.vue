@@ -1,10 +1,10 @@
 <template>
-  <widget class="drag-panel" :meta-data="canvasData.metaData" :is-resizable="canvasData.isResizable"
+  <widget class="drag-panel" ref="dragPanel" :meta-data="canvasData.metaData" :is-resizable="canvasData.isResizable"
     @setActiveId="setActiveId" :is-draggable="canvasData.isDraggable">
-    <widget v-for="containerData in canvasData.metaData.widgetList" :key="containerData.id"
+    <widget v-for="containerData in canvasData.metaData.children" :key="containerData.id"
       :isActive="containerData.id === activeId" :data-container-id="containerData.id" :meta-data="containerData"
       @setActiveId="setActiveId">
-      <widget v-for="widgetData in containerData.widgetList" :key="widgetData.id" :isActive="widgetData.id === activeId"
+      <widget v-for="widgetData in containerData.children" :key="widgetData.id" :isActive="widgetData.id === activeId"
         :meta-data="widgetData" @setActiveId="setActiveId">
       </widget>
     </widget>
@@ -16,9 +16,13 @@ import * as uuid from "uuid";
 
 export interface MetaData {
   id: string;
+  width: number;
+  height: number;
+  pageX: number;
+  pageY: number;
   isActive: boolean;
   widgetType: string;
-  widgetList: MetaData[];
+  children: MetaData[];
 }
 
 interface CanvasData {
@@ -34,9 +38,13 @@ const canvasData = reactive<CanvasData>({
   isResizable: false,
   metaData: {
     id,
+    width: 0,
+    height: 0,
+    pageX: 0,
+    pageY: 0,
     isActive: false,
     widgetType: 'canvas',
-    widgetList: [],
+    children: [],
   },
 });
 
@@ -45,6 +53,20 @@ const activeId = ref('')
 const setActiveId = (id: string) => {
   activeId.value = id
 }
+
+const dragPanel = ref<Vue|null>(null)
+
+onMounted(() => {
+  console.log(dragPanel.value)
+  if (dragPanel.value) {
+    const dom = dragPanel.value.$el as HTMLElement
+    const { width, height, x, y } = dom.getBoundingClientRect()
+    canvasData.metaData.width = width
+    canvasData.metaData.height = height
+    canvasData.metaData.pageX = x
+    canvasData.metaData.pageY = y
+  }
+})
 
 </script>
 

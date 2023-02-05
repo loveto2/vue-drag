@@ -1,30 +1,54 @@
 <template>
   <div class="widget-list">
-    <div class="widget" v-for="widget of widgetList" :key="widget.code" @mousedown="mousedown($event, widget)">
+    <div
+      class="widget"
+      v-for="widget of widgetList"
+      :key="widget.code"
+      @mousedown="mousedown($event, widget)"
+    >
       {{ widget.name }}
     </div>
   </div>
 </template>
 
 <script lang="ts" setup>
+import * as uuid from 'uuid'
 import { emit, register, unregister } from "@/lib/drag";
-import {
-  Container,
-  MetaData,
-  Pointer,
-  State,
-  WidgetType,
-} from "@/types";
-import { map } from "./store";
+import { Pointer } from "@/types";
+import { map, WidgetType, MetaData } from "./store";
 
-const widgetList = ref<MetaData[]>([
+export interface WidgetConfig {
+  code: string;
+  name: string;
+  width: number;
+  height: number;
+  widgetType: WidgetType,
+}
+
+export interface State {
+  target: HTMLElement;
+  container?: MetaData;
+  shadowNode?: HTMLElement;
+  widgetConfig: WidgetConfig;
+  dimensionsBeforeMove: {
+    pointerX: number;
+    pointerY: number;
+    pageX: number;
+    pageY: number;
+    width: number;
+    height: number;
+    left: number;
+    top: number;
+  };
+}
+
+const widgetList = ref<WidgetConfig[]>([
   {
     code: "label",
     name: "容器",
     width: 500,
     height: 300,
     widgetType: WidgetType.container,
-    widgetList: [],
   },
   {
     code: "tabs",
@@ -32,7 +56,6 @@ const widgetList = ref<MetaData[]>([
     width: 300,
     height: 180,
     widgetType: WidgetType.subContainer,
-    widgetList: [],
   },
   {
     code: "button",
@@ -40,7 +63,6 @@ const widgetList = ref<MetaData[]>([
     width: 150,
     height: 80,
     widgetType: WidgetType.widget,
-    widgetList: [],
   },
   {
     code: "icon",
@@ -48,7 +70,6 @@ const widgetList = ref<MetaData[]>([
     width: 80,
     height: 80,
     widgetType: WidgetType.widget,
-    widgetList: [],
   },
   {
     code: "text",
@@ -56,28 +77,28 @@ const widgetList = ref<MetaData[]>([
     width: 300,
     height: 100,
     widgetType: WidgetType.widget,
-    widgetList: [],
   },
 ]);
 
-const isInRect = (pageX: number, pageY: number, el: HTMLElement) => {
-  const rect = el.getBoundingClientRect();
+const isInRect = (pageX: number, pageY: number, metaData: MetaData) => {
   return (
-    pageX > rect.x &&
-    pageX < rect.x + rect.width &&
-    pageY > rect.y &&
-    pageY < rect.y + rect.height
-  );
+    pageX > metaData.pageX &&
+    pageX < metaData.pageX + metaData.width &&
+    pageY > metaData.pageY &&
+    pageY < metaData.pageY + metaData.height
+  )
 };
 
 const getContainer = (pointerX: number, pointerY: number) => {
-  const subContainerMap = map.get(WidgetType.subContainer) || new Map<string, Container>();
-  const containerMap = map.get(WidgetType.container) || new Map<string, Container>();
-  const canvasMap = map.get(WidgetType.canvas) || new Map<string, Container>();
+  const subContainerMap =
+    map.get(WidgetType.subContainer) || new Map<string, MetaData>();
+  const containerMap =
+    map.get(WidgetType.container) || new Map<string, MetaData>();
+  const canvasMap = map.get(WidgetType.canvas) || new Map<string, MetaData>();
 
-  let parentContainer: null | Container = null;
+  let parentContainer: null | MetaData = null;
   for (const subContainer of subContainerMap.values()) {
-    const inRect = isInRect(pointerX, pointerY, subContainer.el);
+    const inRect = isInRect(pointerX, pointerY, subContainer);
     if (inRect) {
       parentContainer = subContainer;
       break;
@@ -85,7 +106,7 @@ const getContainer = (pointerX: number, pointerY: number) => {
   }
   if (!parentContainer) {
     for (const container of containerMap.values()) {
-      const inRect = isInRect(pointerX, pointerY, container.el);
+      const inRect = isInRect(pointerX, pointerY, container);
       if (inRect) {
         parentContainer = container;
         break;
@@ -94,7 +115,7 @@ const getContainer = (pointerX: number, pointerY: number) => {
   }
   if (!parentContainer) {
     for (const canvas of canvasMap.values()) {
-      const inRect = isInRect(pointerX, pointerY, canvas.el);
+      const inRect = isInRect(pointerX, pointerY, canvas);
       if (inRect) {
         parentContainer = canvas;
         break;
@@ -141,8 +162,6 @@ const dragmove = (pointer: Pointer) => {
     const container = getContainer(pointerX, pointerY);
     if (container) {
       state.value.container = container;
-    } else {
-      state.value.container = null;
     }
   }
   // console.log("dragmove", data);
@@ -166,35 +185,48 @@ const dragmove = (pointer: Pointer) => {
   // }
 };
 
-const normalizeMetaData = (metaData: MetaData) => {
-  const { width, height, widgetType } = metaData;
-  metaData.widgetType = widgetType || WidgetType.widget
-  metaData.width = width || 10
-  metaData.height = height || 10
-  metaData.widgetList = []
-}
+const normalizeMetaData = (widgetConfig: WidgetConfig, pointer: Pointer): MetaData | null => {
+  if (state.value) {
+    let left = 0, top = 0
+    const { container } = state.value
+    const { pointerX, pointerY } = pointer;
+    const { width = 10, height = 10, widgetType = WidgetType.widget } = widgetConfig;
+    if (container) {
+      const { pageX, pageY } = container
+      left = pointerX - pageX - width / 2
+      top = pointerY - pageY - height / 2
+    }
+    return {
+      id: uuid.v4(),
+      width,
+      height,
+      pageX: pointerX,
+      pageY: pointerY,
+      left,
+      top,
+      widgetType,
+      children: []
+    }
+  }
+  return null
+};
 
 const dragend = (pointer: Pointer) => {
   if (state.value) {
-    const { pointerX, pointerY } = pointer;
-    const { target, shadowNode, container, metaData } = state.value;
-    normalizeMetaData(metaData);
+    const { target, shadowNode, widgetConfig, container } = state.value;
+    const metaData = normalizeMetaData(widgetConfig, pointer);
     target.style.transition = "opacity .3s";
-    target.style.opacity = '1';
+    target.style.opacity = "1";
     if (shadowNode) {
       shadowNode.style.transition = "opacity .3s";
-      shadowNode.style.opacity = '0';
+      shadowNode.style.opacity = "0";
       shadowNode.addEventListener("transitionend", () => {
         document.body.removeChild(shadowNode);
       });
     }
-    console.log(container, map)
+    console.log(container, map);
     if (container) {
-      emit(`drop-${container.id}`, {
-        pointerX,
-        pointerY,
-        metaData,
-      });
+      emit(`drop-${container.id}`, metaData);
     }
 
     target.style.cursor = "";
@@ -231,7 +263,7 @@ const events = {
   dragend,
 };
 
-const mousedown = (e: MouseEvent, metaData: MetaData) => {
+const mousedown = (e: MouseEvent, widgetConfig: WidgetConfig) => {
   const { pageX: pointerX, pageY: pointerY, target } = e;
   const targetElement = target as HTMLElement;
   const { width, height, x, y } = targetElement.getBoundingClientRect();
@@ -252,8 +284,7 @@ const mousedown = (e: MouseEvent, metaData: MetaData) => {
   state.value = {
     target: targetElement,
     shadowNode,
-    metaData,
-    container: null,
+    widgetConfig,
     dimensionsBeforeMove: {
       pointerX,
       pointerY,
